@@ -7,24 +7,28 @@ and emotion-adaptive conversational capabilities.
 Core Features:
 1. Emotion-Adaptive Tone: Analyzes user sentiment to adjust its conversational style.
 2. Semantic Memory Retrieval: Uses a local ChromaDB vector database to recall past context.
+3. Secure Configuration: Uses python-dotenv to securely load API keys.
+4. Token Management: Implements context window limits for short-term memory.
 Dependencies:
-    pip install langchain langchain-openai langchain-chroma textblob
+    pip install langchain langchain-openai langchain-chroma textblob python-dotenv
 Usage:
     python main.py
 """
 import os
-import argparse
 from typing import List, Dict, Any
 from textblob import TextBlob
+from dotenv import load_dotenv
 # LangChain Imports
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
-# --- Configuration & Placeholders ---
-# Replace with actual API keys or load from environment variables (.env)
-os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "sk-placeholder-openai-api-key")
+# --- Configuration & Environment Setup ---
+# Securely load environment variables from a .env file
+load_dotenv()
+if not os.environ.get("OPENAI_API_KEY"):
+    print("[Warning]: OPENAI_API_KEY not found in environment or .env file.")
 class HANA:
     """
     Highly Adaptive Narrative Agent (HANA).
@@ -33,12 +37,20 @@ class HANA:
     and adapts its conversational tone based on the user's sentiment.
     """
     
-    def __init__(self, persist_directory: str = "./chroma_db"):
-        """Initialize HANA's brain, memory, and LLM components."""
+    def __init__(self, persist_directory: str = "./chroma_db", memory_limit: int = 10):
+        """
+        Initialize HANA's brain, memory, and LLM components.
+        
+        Args:
+            persist_directory (str): The directory to store the ChromaDB instance.
+            memory_limit (int): The maximum number of messages (turns * 2) to keep 
+                                in the short-term chat history. Defaults to 10 (5 turns).
+        """
         self.agent_name = "HANA"
         self.persist_directory = persist_directory
+        self.memory_limit = memory_limit
         
-        # 1. Setup Embeddings and Vector Database (Semantic Memory)
+        # 1. Setup Embeddings and Vector Database (Long-Term Semantic Memory)
         # Using Chroma as a lightweight local vector database
         self.embeddings = OpenAIEmbeddings()
         self.vector_db = Chroma(
@@ -163,6 +175,11 @@ class HANA:
             AIMessage(content=ai_reply)
         ])
         
+        # Enforce context window limit for short-term memory
+        # Restrict to last `memory_limit` messages (e.g., 10 messages = 5 turns)
+        if len(self.chat_history) > self.memory_limit:
+            self.chat_history = self.chat_history[-self.memory_limit:]
+        
         self.save_to_memory(user_input, ai_reply)
         
         return ai_reply
@@ -180,11 +197,12 @@ def main():
     # Initialize the agent
     print("[System]: Initializing HANA's neural pathways and memory...")
     try:
-        hana = HANA()
+        # Initialize HANA with a short-term memory limit of 10 messages (5 turns)
+        hana = HANA(memory_limit=10)
         print("[System]: Initialization complete. HANA is ready.\n")
     except Exception as e:
         print(f"[Error]: Failed to initialize HANA. Details: {e}")
-        print("Please ensure your OPENAI_API_KEY is set correctly.")
+        print("Please ensure your OPENAI_API_KEY is set correctly in the .env file.")
         return
     # Chat loop
     while True:
